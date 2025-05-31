@@ -1,0 +1,10 @@
+{
+  "original_file": "test.txt",
+  "shards": [
+    {
+      "index": 0,
+      "shard": "shard_0.bin",
+      "sha256": "e2b980b79b35017a41710b14822cf0583a60ee8b8c6ac5421c49f6a2c0ebfcd0"
+    }
+  ]
+}
