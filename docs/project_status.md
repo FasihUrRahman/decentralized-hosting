@@ -82,14 +82,41 @@ _A decentralized file hosting system using FastAPI and peer-to-peer architecture
 ---
 
 ## 📁 Directory Structure (Current)
-├── config.py
-├── main.py / shard_api.py
+├── README.md
+├── backend/
+├── frontend/
+├── docs/
+│ └── architecture.md
+│ └── mvp_features.md
+│ └── project_status.md
+├── client_node/
+│ └── metadata/
+│ └── │ └── chunks/
+│ └── │ └── │ └── a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
+├── metadata/
+│ └── node_state.json
 ├── network/
+│ └── peer_client.py
 │ └── peer_server.py
-├── utils/
-│ ├── crypto.py
-│ └── shard_handler.py
+│ └── replicator.py
+├── registry/
+│ └── registry_server.py
+├── shards/
+│ └── manifest.json
+│ └── shard_0.bin
+├── storage/
+│ └── disk_manager.py
 ├── stored_shards/
-│ └── shard_*.bin
-├── manifest.json
-├── shard_map.json
+│ └── shard_1.bin
+├── utils/
+│ └── crypto.py
+│ └── directory.py
+│ └── shard_handler.py
+├── cli.py
+├── config.py
+├── encryption.key
+├── main.py
+├── shard_api.py
+├── test_peer_to_peer.py
+├── test_sharding.py
+├── test.txt
