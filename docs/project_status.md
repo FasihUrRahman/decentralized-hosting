@@ -1,4 +1,4 @@
-# 📦 Project: Decentralized Hosting  
+# 📦 Project: Decentralized Hosting
 _A decentralized file hosting system using FastAPI and peer-to-peer architecture_
 
 ---
@@ -15,108 +15,50 @@ _A decentralized file hosting system using FastAPI and peer-to-peer architecture
 
 ### 3. **Manifest File**
 - A `manifest.json` is generated when files are sharded.
-- Manifest contains:
-  - Original file name
-  - Shard names and indexes
-  - SHA-256 hash of encrypted content for integrity check
+- Manifest contains the original file name, shard details, and SHA-256 hashes for integrity checks.
 
-### 4. **Shard Storage API**
-- **POST** `/store-shard/` accepts file shards and stores them in a secure, encrypted format.
-- **GET** `/get-shard/{index}` retrieves and decrypts specific shards.
+### 4. **Secure Shard Storage API**
+- **POST** `/store-shard/` accepts file shards and stores them.
+- **GET** `/get-shard/{index}` retrieves specific shards.
+- All API endpoints are now protected with API Key authentication to prevent unauthorized access.
 
-### 5. **Shard Distribution to Peers**
-- Distributes shards to peer URLs in round-robin using `distribute_shards_to_peers()`.
-- Uploads shards to `/store-shard/` endpoint on peer servers.
-- Saves peer-shard mapping in `shard_map.json`.
+### 5. **Redundant & Fault-Tolerant Shard Distribution**
+- Each shard is distributed to multiple peers to ensure redundancy.
+- The upload process is fault-tolerant; if an upload to one peer fails, the system automatically tries another available peer.
 
-### 6. **File Reconstruction**
-- `reconstruct_file_from_shards()` reads `manifest.json` and downloads shards to rebuild the original file.
-- Performs integrity verification using SHA-256 before decryption.
+### 6. **Fault-Tolerant File Reconstruction**
+- `reconstruct_from_peers()` reconstructs a file by pulling its shards from multiple peers across the network.
+- If a peer is offline during a download, the system automatically fetches the required shard from another peer that holds a replica.
+- Performs integrity verification using SHA-256 hashes from the manifest before decryption.
 
-### 7. **Basic Peer Server**
-- Basic FastAPI peer server implemented to receive shard uploads and respond to retrieval requests.
+### 7. **Dynamic Peer Management**
+- A central `RegistryServer` is used for peer registration and discovery.
+- The registry actively monitors peer health and automatically removes offline nodes from the available peer list.
 
 ---
 
 ## 🔧 Remaining Features / TODO
 
-### ⚙️ Functional Enhancements
-- [ ] **Multi-peer Redundancy**  
-  Ensure each shard is stored on multiple peers (not just one).
-
-- [ ] **Shard Retrieval Across Peers**  
-  Reconstruct file by pulling shards from multiple peers using `shard_map.json`.
-
-### 🔐 Security & Permissions
-- [ ] **Authentication/Authorization**  
-  Protect APIs to avoid unauthorized access.
-
-- [ ] **Signed URLs or tokens for retrieval**
-
-### 🔁 Peer Management
-- [ ] **Dynamic Peer Discovery**  
-  Discover and register peers automatically.
-
-- [ ] **Optional: DHT or Central Registry**
+### 🏆 Core Goal
+- [ ] **Reward System**
+  - Design and implement a system to track storage contributions from peers.
+  - Integrate a crypto/token system to reward peers for their participation.
 
 ### 🧠 Smart Behavior
-- [ ] **Storage-aware Distribution**  
-  Distribute shards based on peer storage availability.
+- [ ] **Storage-aware Distribution**
+  - Distribute shards based on peer storage availability and latency.
 
-- [ ] **Fault Tolerance**  
-  Retry mechanism for failed shard uploads.  
-  Health check of peer nodes.
+### 🔐 Advanced Security
+- [ ] **Signed URLs or tokens for retrieval**
+  - Implement a more granular permission model for file access.
 
 ### 🧪 Testing & Debugging
-- [ ] Unit tests for:
-  - Encryption/Decryption
-  - Shard splitting/joining
-  - Manifest integrity
+- [ ] **Formalize Testing Suite**
+  - Convert existing test scripts (`test_full_cycle.py`, etc.) into a formal testing suite using a framework like `pytest`.
+  - Add comprehensive unit tests for individual functions.
 
-- [ ] Integration tests across peers
-
-### 🖼️ UI / Dashboard (optional)
-- [ ] File upload form with progress indicator
-- [ ] Peer overview and shard distribution map
-
----
-
-## 📁 Directory Structure (Current)
-├── README.md
-├── backend/
-├── frontend/
-├── docs/
-│ └── architecture.md
-│ └── mvp_features.md
-│ └── project_status.md
-├── client_node/
-│ └── metadata/
-│ └── │ └── chunks/
-│ └── │ └── │ └── a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
-├── metadata/
-│ └── node_state.json
-├── network/
-│ └── peer_client.py
-│ └── peer_server.py
-│ └── replicator.py
-├── registry/
-│ └── registry_server.py
-├── shards/
-│ └── manifest.json
-│ └── shard_0.bin
-├── storage/
-│ └── disk_manager.py
-├── stored_shards/
-│ └── shard_1.bin
-├── utils/
-│ └── crypto.py
-│ └── directory.py
-│ └── shard_handler.py
-├── cli.py
-├── config.py
-├── encryption.key
-├── main.py
-├── shard_api.py
-├── test_peer_to_peer.py
-├── test_sharding.py
-├── test.txt
+### 🖼️ UI / Dashboard
+- [ ] **User Frontend**
+  - A dashboard for users to upload, download, and manage their files.
+- [ ] **Peer/Node Dashboard**
+  - A dashboard for node operators to view their storage usage, uptime, and rewards.

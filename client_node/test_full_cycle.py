@@ -1,10 +1,11 @@
 # client_node/test_full_cycle.py
 
-from utils.shard_handler import (
+from .utils.shard_handler import (
     process_file_to_shards,
     distribute_shards_to_peers,
     reconstruct_from_peers
 )
+from .config import Config # --- NEW
 import os
 import shutil
 
@@ -12,13 +13,11 @@ import shutil
 INPUT_FILE = "my_large_test_file.txt"
 SHARD_FOLDER = "temp_shards"
 RECONSTRUCTED_FILE = "reconstructed_from_peers.txt"
-
-# IMPORTANT: Make sure your FastAPI servers are running on these addresses.
 PEER_SERVERS = [
     "http://localhost:8000",
-    "http://localhost:8001",
+    "http://localhost:9999",
 ]
-REPLICAS = 2 # Store each shard on 2 different peers
+REPLICAS = 2
 
 def cleanup():
     """Removes files and folders created during the test."""
@@ -32,12 +31,15 @@ def cleanup():
 
 def run_test():
     """Executes the full test cycle."""
-    print("--- 🚀 Starting End-to-End Reconstruction Test ---")
+    config = Config() # --- NEW: Get config
+    api_key = config.SECRET_KEY # --- NEW: Get API key
 
+    print("--- 🚀 Starting End-to-End Reconstruction Test (with API Key) ---")
+    
     # 1. Create a dummy file
     print(f"\n[STEP 1] Creating test file: '{INPUT_FILE}'...")
     with open(INPUT_FILE, "w") as f:
-        f.write("Decentralized storage is the future!\n" * 100)
+        f.write("This is a test of a secure, decentralized network.\n" * 100)
     print("✅ Test file created.")
 
     # 2. Process into encrypted shards
@@ -45,12 +47,14 @@ def run_test():
     manifest_path = process_file_to_shards(INPUT_FILE, SHARD_FOLDER)
 
     # 3. Distribute to peers
-    print(f"\n[STEP 3] Distributing shards to {len(PEER_SERVERS)} peers with {REPLICAS} replicas...")
-    shard_map_path = distribute_shards_to_peers(manifest_path, SHARD_FOLDER, PEER_SERVERS, REPLICAS)
+    print(f"\n[STEP 3] Distributing shards to peers with {REPLICAS} replicas...")
+    # --- NEW: Pass api_key to function ---
+    shard_map_path = distribute_shards_to_peers(manifest_path, SHARD_FOLDER, PEER_SERVERS, api_key, REPLICAS)
 
     # 4. Reconstruct from peers
     print(f"\n[STEP 4] Reconstructing file from peers into '{RECONSTRUCTED_FILE}'...")
-    reconstruct_from_peers(manifest_path, shard_map_path, RECONSTRUCTED_FILE)
+    # --- NEW: Pass api_key to function ---
+    reconstruct_from_peers(manifest_path, shard_map_path, RECONSTRUCTED_FILE, api_key)
 
     # 5. Verification
     print("\n[STEP 5] Verifying file integrity...")
