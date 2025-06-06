@@ -1,6 +1,7 @@
 # client_node/shard_api.py
+
 import uvicorn
-from fastapi import FastAPI, UploadFile, Form, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, UploadFile, Form, Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse, JSONResponse
 import os
@@ -14,12 +15,15 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 async def get_api_key(api_key: str = Depends(API_KEY_HEADER)):
     if not api_key or api_key != config.SECRET_KEY:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API Key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key"
+        )
     return api_key
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Application startup: Registering with registry...")
+    print(f"🚀 Application startup on port {config.port}: Registering with registry...")
     registry_host = config.REGISTRY_HOST
     registry_port = config.REGISTRY_PORT
     peer_port = config.port
@@ -28,7 +32,6 @@ async def lifespan(app: FastAPI):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((registry_host, registry_port))
-                # This is the crucial line that uses the correct hostname
                 address = f"{config.PEER_HOSTNAME}:{peer_port}"
                 s.sendall(f"REGISTER {address}".encode())
                 response = s.recv(1024).decode()
@@ -39,8 +42,10 @@ async def lifespan(app: FastAPI):
             time.sleep(2)
     else:
         print(f"❌ Could not register with registry after several attempts.")
+    
     yield
     print("🌙 Application shutdown.")
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -68,5 +73,28 @@ def get_shard(shard_name: str):
         raise HTTPException(status_code=404, detail=f"Shard '{shard_name}' not found.")
     return FileResponse(path=file_location, media_type='application/octet-stream')
 
+# --- NEW DELETE ENDPOINT ---
+@app.delete("/delete-shard/{shard_name}", dependencies=[Depends(get_api_key)])
+def delete_shard(shard_name: str):
+    """
+    Finds and deletes a specific shard from the peer's storage.
+    """
+    try:
+        file_location = os.path.join(STORAGE_DIR, shard_name)
+        if os.path.exists(file_location):
+            os.remove(file_location)
+            print(f"🗑️ Deleted shard: {shard_name}")
+            return JSONResponse(content={"status": "success", "detail": f"Shard '{shard_name}' deleted."})
+        else:
+            print(f"ℹ️ Shard not found, but considering it deleted: {shard_name}")
+            return JSONResponse(content={"status": "success", "detail": f"Shard '{shard_name}' not found."})
+    except Exception as e:
+        print(f"❌ Error deleting shard {shard_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not delete shard: {str(e)}")
+
+
 if __name__ == "__main__":
-    uvicorn.run(f"{__name__}:app", host="0.0.0.0", port=config.port)
+    # Note: The 'f-string' for the app path was a bug in a previous version.
+    # Uvicorn needs the import string for reloading to work, but since we are
+    # not using the reloader in Docker, passing the app object directly is fine.
+    uvicorn.run(app, host="0.0.0.0", port=config.port)

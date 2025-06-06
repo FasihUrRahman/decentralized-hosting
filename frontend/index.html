@@ -20,6 +20,9 @@
         li { background: #f8f9fa; margin-bottom: 0.5em; padding: 0.75em; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
         li a { text-decoration: none; color: #007bff; font-weight: 500; }
         li a:hover { text-decoration: underline; }
+        /* NEW: Styles for the delete button */
+        .delete-btn { background-color: #dc3545; padding: 0.4em 0.8em; font-size: 0.9em; }
+        .delete-btn:hover { background-color: #c82333; }
     </style>
 </head>
 <body>
@@ -28,7 +31,6 @@
         
         <form id="uploadForm" class="upload-form">
             <h2>Upload a New File</h2>
-            <label for="fileInput">Choose a file to upload:</label>
             <input type="file" id="fileInput" required>
             <button type="submit" id="uploadButton">Upload File</button>
         </form>
@@ -40,13 +42,11 @@
 
         <div class="file-list">
             <h2>Uploaded Files</h2>
-            <ul id="fileList">
-                </ul>
+            <ul id="fileList"></ul>
         </div>
     </div>
 
     <script>
-        // --- DOM Elements ---
         const uploadForm = document.getElementById('uploadForm');
         const fileInput = document.getElementById('fileInput');
         const uploadButton = document.getElementById('uploadButton');
@@ -54,60 +54,91 @@
         const statusTitle = document.getElementById('statusTitle');
         const statusBody = document.getElementById('statusBody');
         const fileList = document.getElementById('fileList');
-
-        // --- API Configuration ---
         const apiUrl = 'http://localhost:8080';
 
         /**
-         * Renders the list of files from localStorage.
-         * This function creates the clickable download links.
+         * Renders the list of files, now with a delete button for each.
          */
         const renderFileList = () => {
             const storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
-            fileList.innerHTML = ''; // Clear the list first
+            fileList.innerHTML = '';
             if (storedFiles.length === 0) {
                 fileList.innerHTML = '<li>No files uploaded yet.</li>';
                 return;
             }
             storedFiles.forEach(fileData => {
                 const li = document.createElement('li');
+                
                 const a = document.createElement('a');
-                // The link now correctly points to the download endpoint with the unique file_id
                 a.href = `${apiUrl}/download/${fileData.file_id}`;
                 a.textContent = fileData.original_filename;
-                a.target = '_blank'; // Open in new tab to trigger download
+                a.target = '_blank';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = () => handleDelete(fileData.file_id, fileData.original_filename);
+
                 li.appendChild(a);
+                li.appendChild(deleteBtn);
                 fileList.appendChild(li);
             });
         };
 
-        /**
-         * Adds a new file's metadata to localStorage and re-renders the list.
-         */
         const addFileToList = (fileData) => {
             const storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
-            // Prevent adding duplicates based on the unique file_id
             if (!storedFiles.some(f => f.file_id === fileData.file_id)) {
                 storedFiles.push(fileData);
                 localStorage.setItem('uploadedFiles', JSON.stringify(storedFiles));
             }
             renderFileList();
         };
-        
+
         /**
-         * Handles the form submission for file upload.
+         * NEW: Removes a file's metadata from localStorage after deletion.
          */
-        const handleUpload = async (e) => {
-            e.preventDefault(); 
-            if (!fileInput.files.length) {
-                alert('Please select a file first!');
+        const removeFileFromList = (fileId) => {
+            let storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
+            storedFiles = storedFiles.filter(f => f.file_id !== fileId);
+            localStorage.setItem('uploadedFiles', JSON.stringify(storedFiles));
+            renderFileList();
+        };
+
+        /**
+         * NEW: Handles the click of a delete button.
+         */
+        const handleDelete = async (fileId, filename) => {
+            if (!confirm(`Are you sure you want to permanently delete '${filename}' from the network?`)) {
                 return;
             }
 
+            statusDiv.style.display = 'block';
+            statusTitle.textContent = 'Deleting...';
+            statusBody.textContent = `Requesting deletion of ${filename}...`;
+
+            try {
+                const response = await fetch(`${apiUrl}/delete/${fileId}`, { method: 'DELETE' });
+                const result = await response.json();
+
+                if (!response.ok) { throw new Error(result.detail || 'Server error'); }
+
+                statusTitle.textContent = '✅ Deletion Initiated';
+                statusBody.textContent = JSON.stringify(result, null, 2);
+                removeFileFromList(fileId); // Remove from UI on success
+
+            } catch (error) {
+                statusTitle.textContent = '❌ Deletion Failed';
+                statusBody.textContent = `An error occurred: ${error.message}`;
+            }
+        };
+        
+        const handleUpload = async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) { return; }
             const file = fileInput.files[0];
             const formData = new FormData();
             formData.append('file', file);
-
+            
             uploadButton.disabled = true;
             uploadButton.textContent = 'Uploading...';
             statusDiv.style.display = 'block';
@@ -117,14 +148,10 @@
             try {
                 const response = await fetch(`${apiUrl}/upload/`, { method: 'POST', body: formData });
                 const result = await response.json();
-
-                if (!response.ok) { throw new Error(result.detail || `Server responded with status ${response.status}`); }
-                
+                if (!response.ok) { throw new Error(result.detail || `Server error`); }
                 statusTitle.textContent = '✅ Upload Complete!';
                 statusBody.textContent = JSON.stringify(result, null, 2);
-                // After a successful upload, add the file to our list using the data from the response
                 addFileToList({ original_filename: result.original_filename, file_id: result.file_id });
-
             } catch (error) {
                 statusTitle.textContent = '❌ Upload Failed';
                 statusBody.textContent = `An error occurred: ${error.message}`;
@@ -135,9 +162,7 @@
             }
         };
 
-        // --- Event Listeners ---
         uploadForm.addEventListener('submit', handleUpload);
-        // Render the list from localStorage as soon as the page loads
         document.addEventListener('DOMContentLoaded', renderFileList);
     </script>
 </body>
