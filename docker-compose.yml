@@ -8,6 +8,8 @@ services:
       - "6000:6000"
     volumes:
       - ./client_node:/app/client_node
+    environment:
+      - PYTHONPATH=/app
 
   peer1:
     build: .
@@ -16,11 +18,14 @@ services:
       - NODE_PORT=8000
       - REGISTRY_HOST=registry
       - PEER_HOSTNAME=peer1
-    command: python3 client_node/shard_api.py
+      - PYTHONPATH=/app
+    # --- MODIFIED: Run as a module ---
+    command: python3 -m client_node.shard_api
     ports:
       - "8000:8000"
     volumes:
       - ./client_node:/app/client_node
+      - ./tests:/app/tests
     depends_on:
       - registry
 
@@ -31,11 +36,14 @@ services:
       - NODE_PORT=8001
       - REGISTRY_HOST=registry
       - PEER_HOSTNAME=peer2
-    command: python3 client_node/shard_api.py
+      - PYTHONPATH=/app
+    # --- MODIFIED: Run as a module ---
+    command: python3 -m client_node.shard_api
     ports:
       - "8001:8001"
     volumes:
       - ./client_node:/app/client_node
+      - ./tests:/app/tests
     depends_on:
       - registry
 
@@ -44,12 +52,31 @@ services:
     container_name: main_api
     environment:
       - REGISTRY_HOST=registry
+      - PYTHONPATH=/app
     command: uvicorn client_node.main_api:app --host 0.0.0.0 --port 8080
     ports:
       - "8080:8080"
     volumes:
       - ./client_node:/app/client_node
+      - ./tests:/app/tests
+      - metadata_volume:/app/file_metadata
     depends_on:
       - registry
       - peer1
       - peer2
+  
+  auditor:
+    build: .
+    container_name: auditor
+    environment:
+      - REGISTRY_HOST=registry
+      - PYTHONPATH=/app
+    command: python3 client_node/auditor.py
+    volumes:
+      - ./client_node:/app/client_node
+      - metadata_volume:/app/file_metadata
+    depends_on:
+      - main_api
+
+volumes:
+  metadata_volume:

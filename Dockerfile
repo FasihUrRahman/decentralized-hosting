@@ -10,8 +10,9 @@ COPY requirements.txt .
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the client_node directory into the container
+# Copy the application and test code into the container
 COPY ./client_node ./client_node
+COPY ./tests ./tests
 
 # Expose the ports the application will use
 EXPOSE 6000 8000 8001 8080

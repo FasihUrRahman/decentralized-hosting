@@ -1,24 +1,22 @@
 # client_node/shard_api.py
 
 import uvicorn
-from fastapi import FastAPI, UploadFile, Form, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, Form
 from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse, JSONResponse
 import os
 import socket
 import time
+import hashlib
 from contextlib import asynccontextmanager
-from config import Config
+from .config import Config
 
 config = Config()
 API_KEY_HEADER = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 async def get_api_key(api_key: str = Depends(API_KEY_HEADER)):
     if not api_key or api_key != config.SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API Key")
     return api_key
 
 @asynccontextmanager
@@ -42,19 +40,19 @@ async def lifespan(app: FastAPI):
             time.sleep(2)
     else:
         print(f"❌ Could not register with registry after several attempts.")
-    
     yield
     print("🌙 Application shutdown.")
 
-
 app = FastAPI(lifespan=lifespan)
+
+STORAGE_DIR = "stored_shards"
+os.makedirs(STORAGE_DIR, exist_ok=True)
+
+# --- Endpoints ---
 
 @app.get("/health", response_class=JSONResponse)
 def health_check():
     return {"status": "ok"}
-
-STORAGE_DIR = "stored_shards"
-os.makedirs(STORAGE_DIR, exist_ok=True)
 
 @app.post("/store-shard/", dependencies=[Depends(get_api_key)])
 async def store_shard(shard: UploadFile = Form(...)):
@@ -73,12 +71,8 @@ def get_shard(shard_name: str):
         raise HTTPException(status_code=404, detail=f"Shard '{shard_name}' not found.")
     return FileResponse(path=file_location, media_type='application/octet-stream')
 
-# --- NEW DELETE ENDPOINT ---
 @app.delete("/delete-shard/{shard_name}", dependencies=[Depends(get_api_key)])
 def delete_shard(shard_name: str):
-    """
-    Finds and deletes a specific shard from the peer's storage.
-    """
     try:
         file_location = os.path.join(STORAGE_DIR, shard_name)
         if os.path.exists(file_location):
@@ -86,15 +80,31 @@ def delete_shard(shard_name: str):
             print(f"🗑️ Deleted shard: {shard_name}")
             return JSONResponse(content={"status": "success", "detail": f"Shard '{shard_name}' deleted."})
         else:
-            print(f"ℹ️ Shard not found, but considering it deleted: {shard_name}")
             return JSONResponse(content={"status": "success", "detail": f"Shard '{shard_name}' not found."})
     except Exception as e:
-        print(f"❌ Error deleting shard {shard_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Could not delete shard: {str(e)}")
 
+# --- NEW AUDIT ENDPOINT ---
+@app.get("/audit-shard/{shard_name}", dependencies=[Depends(get_api_key)])
+async def audit_shard(shard_name: str):
+    """
+    Calculates and returns the hash of a stored shard to prove its integrity.
+    """
+    file_location = os.path.join(STORAGE_DIR, shard_name)
+    if not os.path.exists(file_location):
+        raise HTTPException(status_code=404, detail=f"Audit failed: Shard '{shard_name}' not found.")
+    
+    try:
+        with open(file_location, "rb") as f:
+            shard_data = f.read()
+        
+        # Calculate the hash of the stored (encrypted) data
+        current_hash = hashlib.sha256(shard_data).hexdigest()
+        
+        return {"hash": current_hash}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not process audit: {str(e)}")
 
 if __name__ == "__main__":
-    # Note: The 'f-string' for the app path was a bug in a previous version.
-    # Uvicorn needs the import string for reloading to work, but since we are
-    # not using the reloader in Docker, passing the app object directly is fine.
     uvicorn.run(app, host="0.0.0.0", port=config.port)

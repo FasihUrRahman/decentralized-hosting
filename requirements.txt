@@ -3,3 +3,6 @@ uvicorn
 requests
 cryptography
 python-multipart
+pytest
+pytest-asyncio
+httpx
