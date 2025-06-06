@@ -1,5 +1,4 @@
-version: '3.8'
-
+# docker-compose.yml
 services:
   registry:
     build: .
@@ -16,6 +15,7 @@ services:
     environment:
       - NODE_PORT=8000
       - REGISTRY_HOST=registry
+      - PEER_HOSTNAME=peer1
     command: python3 client_node/shard_api.py
     ports:
       - "8000:8000"
@@ -30,6 +30,7 @@ services:
     environment:
       - NODE_PORT=8001
       - REGISTRY_HOST=registry
+      - PEER_HOSTNAME=peer2
     command: python3 client_node/shard_api.py
     ports:
       - "8001:8001"
