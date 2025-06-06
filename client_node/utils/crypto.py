@@ -4,7 +4,7 @@ import binascii
 from cryptography.fernet import Fernet, InvalidToken
 import base64
 
-KEY_FILE = "encryption.key"
+KEY_FILE = os.path.join(os.path.dirname(__file__), "..", "encryption.key")
 
 def generate_key():
     """Generate and save a new Fernet key"""
@@ -15,10 +15,15 @@ def generate_key():
     return key
 
 def load_key():
-    """Load the encryption key, generate if doesn't exist"""
-    if not os.path.exists(KEY_FILE):
-        return generate_key()
-    with open(KEY_FILE, "rb") as f:
+    """Load key from project root"""
+    key_path = os.path.abspath(KEY_FILE)
+    if not os.path.exists(key_path):
+        os.makedirs(os.path.dirname(key_path), exist_ok=True)
+        with open(key_path, "wb") as f:
+            key = Fernet.generate_key()
+            f.write(key)
+            print(f"🔑 Generated new key at {key_path}")
+    with open(key_path, "rb") as f:
         return f.read()
 
 def get_cipher_suite():

@@ -13,27 +13,25 @@ class DiskManager:
         return os.path.join(STORAGE_DIR, chunk_id)
 
     def save_chunk(self, chunk_data: bytes) -> str:
-        # ✅ Encrypt the data before saving
-        encrypted_data = encrypt_data(chunk_data)
+        """Store chunk as-is without re-encrypting"""
         chunk_id = hashlib.sha256(chunk_data).hexdigest()
         path = self._chunk_path(chunk_id)
 
         if not os.path.exists(path):
-            if self.get_used_space() + len(encrypted_data) > self.max_storage_bytes:
+            if self.get_used_space() + len(chunk_data) > self.max_storage_bytes:
                 raise Exception("Storage limit reached!")
             with open(path, "wb") as f:
-                f.write(encrypted_data)
+                f.write(chunk_data)
 
         return chunk_id
 
     def load_chunk(self, chunk_id: str) -> bytes:
+        """Return raw chunk data without decryption"""
         path = self._chunk_path(chunk_id)
         if not os.path.exists(path):
             raise FileNotFoundError("Chunk not found.")
         with open(path, "rb") as f:
-            encrypted_data = f.read()
-        # ✅ Decrypt the data before returning
-        return decrypt_data(encrypted_data)
+            return f.read()
 
     def get_used_space(self):
         total = 0

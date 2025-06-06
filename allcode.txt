@@ -1,0 +1,792 @@
+-backend Folder
+    Have Nothing Yet.
+-frontend Folder
+    Have Nothing Yet.
+-docs Folder
+    -architecture.md
+        # Decentralized Hosting Platform – Architecture Overview
+
+        ## Goal
+        Allow local users to rent out their internet and disk space for decentralized file hosting.
+
+        ## Components
+        - Client Node
+        - P2P Networking
+        - Backend API
+        - Frontend Dashboard
+        - Token Reward System (Phase 7)
+
+        ## Milestone 1: MVP
+        Upload file → Split → Encrypt → Send to peer → Retrieve by hash
+    -mvp_features.md
+        # MVP Feature List for Decentralized Hosting
+
+        ## Components
+        - Backend (FastAPI)
+        - Client Node (Python P2P client)
+        - Frontend Dashboard (Angular)
+
+        ---
+
+        ## Features
+
+        1. File Upload via Dashboard
+        2. File is split into chunks (5MB each)
+        3. Each chunk is encrypted
+        4. Chunks are distributed to connected peers
+        5. Retrieval is done via file hash
+        6. Client Nodes expose storage via Python agent
+        7. Admin tracks nodes, usage, and owed money
+        8. Placeholder for crypto/token reward system
+    -project_status.md
+        # 📦 Project: Decentralized Hosting  
+        _A decentralized file hosting system using FastAPI and peer-to-peer architecture_
+
+        ---
+
+        ## ✅ Features Completed
+
+        ### 1. **File Splitting & Sharding**
+        - Implemented `split_file()` to divide large files into 1MB shards.
+        - Each shard is indexed for easy retrieval and reconstruction.
+
+        ### 2. **Encryption**
+        - Used `Fernet` encryption from the `cryptography` library.
+        - Each shard is encrypted individually before being stored or distributed.
+
+        ### 3. **Manifest File**
+        - A `manifest.json` is generated when files are sharded.
+        - Manifest contains:
+        - Original file name
+        - Shard names and indexes
+        - SHA-256 hash of encrypted content for integrity check
+
+        ### 4. **Shard Storage API**
+        - **POST** `/store-shard/` accepts file shards and stores them in a secure, encrypted format.
+        - **GET** `/get-shard/{index}` retrieves and decrypts specific shards.
+
+        ### 5. **Shard Distribution to Peers**
+        - Distributes shards to peer URLs in round-robin using `distribute_shards_to_peers()`.
+        - Uploads shards to `/store-shard/` endpoint on peer servers.
+        - Saves peer-shard mapping in `shard_map.json`.
+
+        ### 6. **File Reconstruction**
+        - `reconstruct_file_from_shards()` reads `manifest.json` and downloads shards to rebuild the original file.
+        - Performs integrity verification using SHA-256 before decryption.
+
+        ### 7. **Basic Peer Server**
+        - Basic FastAPI peer server implemented to receive shard uploads and respond to retrieval requests.
+
+        ---
+
+        ## 🔧 Remaining Features / TODO
+
+        ### ⚙️ Functional Enhancements
+        - [ ] **Multi-peer Redundancy**  
+        Ensure each shard is stored on multiple peers (not just one).
+
+        - [ ] **Shard Retrieval Across Peers**  
+        Reconstruct file by pulling shards from multiple peers using `shard_map.json`.
+
+        ### 🔐 Security & Permissions
+        - [ ] **Authentication/Authorization**  
+        Protect APIs to avoid unauthorized access.
+
+        - [ ] **Signed URLs or tokens for retrieval**
+
+        ### 🔁 Peer Management
+        - [ ] **Dynamic Peer Discovery**  
+        Discover and register peers automatically.
+
+        - [ ] **Optional: DHT or Central Registry**
+
+        ### 🧠 Smart Behavior
+        - [ ] **Storage-aware Distribution**  
+        Distribute shards based on peer storage availability.
+
+        - [ ] **Fault Tolerance**  
+        Retry mechanism for failed shard uploads.  
+        Health check of peer nodes.
+
+        ### 🧪 Testing & Debugging
+        - [ ] Unit tests for:
+        - Encryption/Decryption
+        - Shard splitting/joining
+        - Manifest integrity
+
+        - [ ] Integration tests across peers
+
+        ### 🖼️ UI / Dashboard (optional)
+        - [ ] File upload form with progress indicator
+        - [ ] Peer overview and shard distribution map
+
+        ---
+
+        ## 📁 Directory Structure (Current)
+        ├── README.md
+        ├── backend/
+        ├── frontend/
+        ├── docs/
+        │ └── architecture.md
+        │ └── mvp_features.md
+        │ └── project_status.md
+        ├── client_node/
+        │ └── metadata/
+        │ └── │ └── chunks/
+        │ └── │ └── │ └── a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
+        ├── metadata/
+        │ └── node_state.json
+        ├── network/
+        │ └── peer_client.py
+        │ └── peer_server.py
+        │ └── replicator.py
+        ├── registry/
+        │ └── registry_server.py
+        ├── shards/
+        │ └── manifest.json
+        │ └── shard_0.bin
+        ├── storage/
+        │ └── disk_manager.py
+        ├── stored_shards/
+        │ └── shard_1.bin
+        ├── utils/
+        │ └── crypto.py
+        │ └── directory.py
+        │ └── shard_handler.py
+        ├── cli.py
+        ├── config.py
+        ├── encryption.key
+        ├── main.py
+        ├── shard_api.py
+        ├── test_peer_to_peer.py
+        ├── test_sharding.py
+        ├── test.txt
+-client_node
+    -client_node
+        -metadata
+            -chunks
+                Empty For Now But Here We Store Chunk Data in Encrypted Form
+-metadata
+    -node_state.json
+        Empty For Now But Here We Store Chunk Record
+-network
+    -peer_client.py
+        import socket
+        import base64
+
+        def send_store_request(host, port, chunk_data: bytes):
+            msg = "STORE " + base64.b64encode(chunk_data).decode()
+            return _send(host, port, msg)
+
+        def send_fetch_request(host, port, chunk_id: str):
+            msg = "FETCH " + chunk_id
+            return _send(host, port, msg)
+
+        def _send(host, port, message: str):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((host, port))
+                s.sendall(message.encode())
+                response = s.recv(4096).decode()
+                return response
+    -peer_server.py
+        import socket
+        import threading
+        import base64
+        import time
+        from storage.disk_manager import DiskManager
+
+        class PeerServer:
+            def __init__(self, port):
+                self.port = port
+                self.running = True
+                self.disk = DiskManager(500)
+
+            def register_with_registry(self):
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.connect(("127.0.0.1", 6000))  # Registry is running locally on port 6000
+                        address = f"127.0.0.1:{self.port}"
+                        s.sendall(f"REGISTER {address}".encode())
+                        response = s.recv(1024).decode()
+                        print(f"📝 Registry response: {response}")
+                except Exception as e:
+                    print(f"❌ Could not register with registry: {e}")
+
+            def handle_client(self, conn, addr):
+                print(f"🔗 Incoming connection from {addr}")
+                try:
+                    data = conn.recv(4096).decode()
+                    print(f"📨 Received: {data[:50]}...")
+
+                    if data.startswith("STORE "):
+                        base64_data = data[6:].strip()
+                        chunk_data = base64.b64decode(base64_data)
+
+                        # Encryption handled inside DiskManager
+                        chunk_id = self.disk.save_chunk(chunk_data)
+                        conn.sendall(f"STORED {chunk_id}".encode())
+
+                    elif data.startswith("FETCH "):
+                        chunk_id = data[6:].strip()
+                        try:
+                            # Decryption handled inside DiskManager
+                            chunk_data = self.disk.load_chunk(chunk_id)
+                            base64_chunk = base64.b64encode(chunk_data).decode()
+                            conn.sendall(f"DATA {base64_chunk}".encode())
+
+                        except FileNotFoundError:
+                            # Try fetching from other peers
+                            found = False
+                            for host, port in self.get_peers_from_registry():
+                                if f"{host}:{port}" == f"127.0.0.1:{self.port}":
+                                    continue  # Skip self
+
+                                try:
+                                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as peer_socket:
+                                        peer_socket.connect((host, int(port)))
+                                        peer_socket.sendall(f"FETCH {chunk_id}".encode())
+                                        response = peer_socket.recv(65536).decode()
+
+                                        if response.startswith("DATA "):
+                                            base64_data = response[5:]
+                                            chunk_data = base64.b64decode(base64_data)
+
+                                            # Store the data locally (encryption handled in DiskManager)
+                                            self.disk.save_chunk(chunk_data)
+
+                                            conn.sendall(response.encode())
+                                            found = True
+                                            break
+                                except Exception:
+                                    continue
+
+                            if not found:
+                                conn.sendall(b"ERROR Not Found")
+                    else:
+                        conn.sendall(b"ERROR Invalid Command")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    conn.sendall(f"ERROR {str(e)}".encode())
+                finally:
+                    conn.close()
+
+            def get_peers_from_registry(self):
+                peers = []
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.connect(("localhost", 6000))
+                        s.sendall(b"GET PEERS")
+                        data = s.recv(4096).decode()
+                        for line in data.strip().split("\n"):
+                            if line:
+                                host, port = line.strip().split(":")
+                                peers.append((host, port))
+                except Exception as e:
+                    print(f"⚠️ Could not fetch peers: {e}")
+                return peers
+
+            def start(self):
+                self.register_with_registry()
+                thread = threading.Thread(target=self.run_server)
+                thread.start()
+
+            def run_server(self):
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", self.port))
+                    s.listen()
+                    print(f"✅ Peer node is listening on port {self.port}...")
+
+                    while self.running:
+                        conn, addr = s.accept()
+                        client_thread = threading.Thread(target=self.handle_client, args=(conn, addr))
+                        client_thread.start()
+    -replicator.py
+        # network/replicator.py
+        from network.peer_client import send_store_request
+
+        def replicate_chunk(chunk_data, peers, copies=2):
+            stored = []
+            for host_port in peers:
+                if len(stored) >= copies:
+                    break
+                host, port = host_port.split(":")
+                response = send_store_request(host, int(port), chunk_data)
+                if response.startswith("STORED"):
+                    stored.append((host, port))
+            return stored
+-register
+    -registry_server.py
+        # registry/registry_server.py
+        import socket
+        import threading
+
+        class RegistryServer:
+            def __init__(self, host="0.0.0.0", port=6000):
+                self.host = host
+                self.port = port
+                self.peers = []
+                self.lock = threading.Lock()
+
+            def start(self):
+                print(f"🌐 Registry Server listening on {self.host}:{self.port}")
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((self.host, self.port))
+                    s.listen()
+                    while True:
+                        conn, addr = s.accept()
+                        threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True).start()
+
+            def handle_client(self, conn, addr):
+                try:
+                    data = conn.recv(4096).decode().strip()
+
+                    if data.startswith("REGISTER"):
+                        parts = data.split()
+                        if len(parts) == 2:
+                            ip_port = parts[1]
+                            if ":" in ip_port:
+                                peer_host, peer_port = ip_port.split(":")
+                                with self.lock:
+                                    peer = (peer_host, peer_port)
+                                    if peer not in self.peers:
+                                        self.peers.append(peer)
+                                        print(f"✅ Registered peer: {peer_host}:{peer_port}")
+                                conn.sendall(b"REGISTERED")
+                            else:
+                                conn.sendall(b"ERROR Invalid IP:Port format")
+                        else:
+                            conn.sendall(b"ERROR Invalid registration format")
+
+                    elif data == "GET PEERS":
+                        with self.lock:
+                            peer_list = "\n".join([f"{host}:{port}" for host, port in self.peers])
+                        conn.sendall(peer_list.encode())
+
+                    else:
+                        conn.sendall(b"INVALID COMMAND")
+
+                except Exception as e:
+                    print(f"❌ Registry error: {e}")
+                finally:
+                    conn.close()
+
+        if __name__ == "__main__":
+            server = RegistryServer()
+            server.start()
+-shards
+    -manifest.json
+        {
+            "original_file": "test.txt",
+            "shards": [
+                {
+                "index": 0,
+                "shard": "shard_0.bin",
+                "sha256": "e2b980b79b35017a41710b14822cf0583a60ee8b8c6ac5421c49f6a2c0ebfcd0"
+                }
+            ]
+        }
+    -shard_0.bin //File store here.
+-storage
+    -disk_manager.py
+        import os
+        import hashlib
+        from utils.crypto import encrypt_data, decrypt_data
+
+        STORAGE_DIR = "client_node/metadata/chunks" #Folder Where Encrypted Data Stored
+
+        class DiskManager:
+            def __init__(self, max_storage_mb):
+                self.max_storage_bytes = max_storage_mb * 1024 * 1024
+                os.makedirs(STORAGE_DIR, exist_ok=True)
+
+            def _chunk_path(self, chunk_id):
+                return os.path.join(STORAGE_DIR, chunk_id)
+
+            def save_chunk(self, chunk_data: bytes) -> str:
+                # ✅ Encrypt the data before saving
+                encrypted_data = encrypt_data(chunk_data)
+                chunk_id = hashlib.sha256(chunk_data).hexdigest()
+                path = self._chunk_path(chunk_id)
+
+                if not os.path.exists(path):
+                    if self.get_used_space() + len(encrypted_data) > self.max_storage_bytes:
+                        raise Exception("Storage limit reached!")
+                    with open(path, "wb") as f:
+                        f.write(encrypted_data)
+
+                return chunk_id
+
+            def load_chunk(self, chunk_id: str) -> bytes:
+                path = self._chunk_path(chunk_id)
+                if not os.path.exists(path):
+                    raise FileNotFoundError("Chunk not found.")
+                with open(path, "rb") as f:
+                    encrypted_data = f.read()
+                # ✅ Decrypt the data before returning
+                return decrypt_data(encrypted_data)
+
+            def get_used_space(self):
+                total = 0
+                for filename in os.listdir(STORAGE_DIR):
+                    path = os.path.join(STORAGE_DIR, filename)
+                    if os.path.isfile(path):
+                        total += os.path.getsize(path)
+                return total
+-utils
+    -crypto.py
+        # utils/crypto.py
+        import os
+        import binascii
+        from cryptography.fernet import Fernet, InvalidToken
+        import base64
+
+        KEY_FILE = "encryption.key"
+
+        def generate_key():
+            """Generate and save a new Fernet key"""
+            key = Fernet.generate_key()
+            with open(KEY_FILE, "wb") as f:
+                f.write(key)
+            print(f"🔑 Generated new encryption key")
+            return key
+
+        def load_key():
+            """Load the encryption key, generate if doesn't exist"""
+            if not os.path.exists(KEY_FILE):
+                return generate_key()
+            with open(KEY_FILE, "rb") as f:
+                return f.read()
+
+        def get_cipher_suite():
+            """Return a Fernet instance with the loaded key"""
+            key = load_key()
+            return Fernet(key)
+
+        def encrypt_data(data: bytes) -> bytes:
+            """Encrypt data with validation"""
+            if not isinstance(data, bytes):
+                raise TypeError(f"Expected bytes, got {type(data)}")
+            
+            try:
+                cipher = get_cipher_suite()
+                encrypted = cipher.encrypt(data)
+                print(f"🔒 Encrypted {len(data)} bytes")
+                return encrypted
+            except Exception as e:
+                raise ValueError(f"Encryption failed: {str(e)}") from e
+
+        def decrypt_data(encrypted_data: bytes) -> bytes:
+            """Decrypt data with comprehensive error handling"""
+            if not isinstance(encrypted_data, bytes):
+                try:
+                    encrypted_data = encrypted_data.encode()
+                except AttributeError:
+                    raise TypeError("Expected bytes or string")
+            
+            try:
+                # Verify minimum length (Fernet token is always > 60 bytes)
+                if len(encrypted_data) < 60:
+                    raise ValueError("Data too short to be Fernet token")
+                    
+                # Handle potential padding issues
+                try:
+                    cipher = get_cipher_suite()
+                    return cipher.decrypt(encrypted_data)
+                except InvalidToken:
+                    # Try with padding correction
+                    missing_padding = len(encrypted_data) % 4
+                    if missing_padding:
+                        encrypted_data += b'=' * (4 - missing_padding)
+                        return cipher.decrypt(encrypted_data)
+                    raise
+            except Exception as e:
+                print(f"❌ Decryption failed. Possible causes:")
+                print(f"- Key changed since encryption (current key: {load_key()[:10]}...)")
+                print(f"- Data corrupted (length: {len(encrypted_data)} bytes)")
+                print(f"- First bytes: {encrypted_data[:32]}...")
+                raise ValueError(f"Decryption failed: {str(e)}") from e
+    -directory.py
+        # utils/directory.py
+        import json, os
+
+        DIRECTORY_FILE = "directory.json"
+
+        def save_metadata(chunk_id, filename, owner):
+            directory = {}
+            if os.path.exists(DIRECTORY_FILE):
+                with open(DIRECTORY_FILE, "r") as f:
+                    directory = json.load(f)
+            directory[chunk_id] = {"filename": filename, "owner": owner}
+            with open(DIRECTORY_FILE, "w") as f:
+                json.dump(directory, f)
+
+        def get_metadata(chunk_id):
+            if os.path.exists(DIRECTORY_FILE):
+                with open(DIRECTORY_FILE, "r") as f:
+                    directory = json.load(f)
+                    return directory.get(chunk_id, {})
+            return {}
+    -shard_handler.py
+        # utils/shard_handler.py
+        import os
+        import json
+        import hashlib
+        import requests
+        from utils.crypto import encrypt_data, decrypt_data
+
+        def split_file(file_path: str, shard_size: int = 1024 * 1024):  # 1MB
+            with open(file_path, 'rb') as f:
+                index = 0
+                while chunk := f.read(shard_size):
+                    yield index, chunk
+                    index += 1
+
+        def process_file_to_shards(file_path: str, output_dir: str):
+            os.makedirs(output_dir, exist_ok=True)
+            manifest = {
+                'original_file': os.path.basename(file_path),
+                'shards': []
+            }
+
+            for index, chunk in split_file(file_path):
+                encrypted = encrypt_data(chunk)
+                sha256 = hashlib.sha256(encrypted).hexdigest()
+                shard_name = f'shard_{index}.bin'
+                shard_path = os.path.join(output_dir, shard_name)
+
+                with open(shard_path, 'wb') as f:
+                    f.write(encrypted)
+
+                manifest['shards'].append({
+                    'index': index,
+                    'shard': shard_name,
+                    'sha256': sha256
+                })
+
+            manifest_path = os.path.join(output_dir, 'manifest.json')
+            with open(manifest_path, 'w') as f:
+                json.dump(manifest, f, indent=2)
+
+            print(f"✅ File split and encrypted into {len(manifest['shards'])} shards.")
+            return manifest_path
+
+        def reconstruct_file_from_shards(manifest_path: str, shard_dir: str, output_file: str):
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+
+            with open(output_file, 'wb') as out:
+                for shard in sorted(manifest['shards'], key=lambda x: x['index']):
+                    shard_file = os.path.join(shard_dir, shard['shard'])
+
+                    with open(shard_file, 'rb') as f:
+                        encrypted = f.read()
+
+                    # Integrity check
+                    if hashlib.sha256(encrypted).hexdigest() != shard['sha256']:
+                        raise ValueError(f"Hash mismatch for {shard['shard']}")
+
+                    decrypted = decrypt_data(encrypted)
+                    out.write(decrypted)
+
+            print(f"✅ File reconstructed at: {output_file}")
+
+        def distribute_shards_to_peers(manifest_path: str, shard_dir: str, peer_urls: list[str], shard_map_path="shard_map.json"):
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+
+            shard_map = {}
+
+            for i, shard in enumerate(manifest['shards']):
+                peer = peer_urls[i % len(peer_urls)]  # round robin
+                shard_file = os.path.join(shard_dir, shard['shard'])
+
+                with open(shard_file, 'rb') as f:
+                    files = {
+                        "shard": (shard['shard'], f, "application/octet-stream")
+                    }
+                    data = {
+                        "index": shard['index']
+                    }
+                    try:
+                        r = requests.post(f"{peer}/store-shard/", files=files, data=data)
+                        if r.status_code == 200:
+                            print(f"📤 Shard {shard['index']} sent to {peer}")
+                            shard_map[shard['index']] = peer
+                        else:
+                            print(f"❌ Failed to send shard {shard['index']} to {peer}: {r.text}")
+                    except Exception as e:
+                        print(f"❌ Error sending to {peer}: {str(e)}")
+
+            with open(shard_map_path, "w") as f:
+                json.dump(shard_map, f, indent=2)
+            
+            print(f"✅ Shard map saved to {shard_map_path}")
+-cli.py
+    # cli.py
+    from network.peer_client import send_store_request, send_fetch_request
+    import base64
+
+    def main():
+        print("📁 Decentralized Storage CLI")
+        print("1. Store File")
+        print("2. Fetch Chunk")
+        choice = input("Choose an option: ")
+
+        if choice == "1":
+            filename = input("Enter filename: ")
+            with open(filename, "rb") as f:
+                data = f.read()
+            response = send_store_request("localhost", 5001, data)
+            print("📤 STORE Response:", response)
+        elif choice == "2":
+            chunk_id = input("Enter chunk ID: ")
+            response = send_fetch_request("localhost", 5001, chunk_id)
+            if response.startswith("DATA "):
+                b64_data = response.split(" ", 1)[1]
+                decoded = base64.b64decode(b64_data)
+                with open("output_file", "wb") as f:
+                    f.write(decoded)
+                print("✅ Saved to output_file")
+            else:
+                print("❌ Fetch failed.")
+
+    if __name__ == "__main__":
+        main()
+-config.py
+    import os
+
+    class Config:
+        def __init__(self):
+            self.port = int(os.getenv("NODE_PORT", 5001))
+            self.max_storage_mb = int(os.getenv("MAX_STORAGE_MB", 500))  # 500MB default
+-encryption.key
+    OsiYCbzD0XM-GE5qsW2m_0Ke8NSttvLepBXAwMkC3CU=
+-main.py
+    import socket
+    from config import Config
+    from network.peer_server import PeerServer
+    from storage.disk_manager import DiskManager
+    import base64
+
+    def main():
+        config = Config()
+        print("🔌 Starting Decentralized Host Node...")
+        disk = DiskManager(config.max_storage_mb)
+        port = config.port
+        print(f"📦 Max Storage Allowed: {disk.max_storage_bytes // (1024 * 1024)} MB")
+        print(f"🌐 Listening on port {port}")
+        print(f"💽 Used disk: {disk.get_used_space() / 1024:.2f} KB")
+
+        server = PeerServer(port)
+        server.start()
+
+        # chunk_id = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+
+        # try:
+        #     chunk_data = disk.load_chunk(chunk_id)
+        #     print(f"✅ Already had chunk: {chunk_data}")
+        # except FileNotFoundError:
+        #     print("⚠️ Chunk not found locally, trying to fetch from peers...")
+        #     peers = server.get_peers_from_registry()
+        #     found = False
+
+        #     for host, port in peers:
+        #         if f"{host}:{port}" == "127.0.0.1:5002":
+        #             continue
+        #         try:
+        #             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #                 s.connect((host, int(port)))
+        #                 s.sendall(f"FETCH {chunk_id}".encode())
+        #                 response = s.recv(65536).decode()
+        #                 if response.startswith("DATA "):
+        #                     base64_data = response[5:]
+        #                     chunk_data = base64.b64decode(base64_data)
+        #                     disk.save_chunk(chunk_data)
+        #                     print(f"✅ Successfully fetched and saved chunk from peer: {chunk_data}")
+        #                     found = True
+        #                     break
+        #         except Exception as e:
+        #             print(f"❌ Could not fetch from peer {host}:{port} — {e}")
+            
+        #     if not found:
+        #         print("🚫 Chunk not found in any peer.")
+
+    if __name__ == "__main__":
+        main()
+-shard_api.py
+    from fastapi import FastAPI, UploadFile, Form
+    import os
+    from utils.crypto import encrypt_data, decrypt_data  # Using your provided encryption logic
+
+    app = FastAPI()
+    STORAGE_DIR = "stored_shards"
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+
+    @app.post("/store-shard/")
+    async def store_shard(index: int = Form(...), shard: UploadFile = Form(...)):
+        file_location = os.path.join(STORAGE_DIR, f"shard_{index}.bin")
+        
+        # Read file content
+        content = await shard.read()
+        
+        # Encrypt using your utility
+        encrypted_content = encrypt_data(content)
+        
+        # Store encrypted shard
+        with open(file_location, "wb") as f:
+            f.write(encrypted_content)
+        
+        return {"status": "success", "index": index}
+
+    @app.get("/get-shard/{index}")
+    def get_shard(index: int):
+        file_location = os.path.join(STORAGE_DIR, f"shard_{index}.bin")
+        
+        if not os.path.exists(file_location):
+            return {"error": "Shard not found"}
+        
+        with open(file_location, "rb") as f:
+            encrypted_content = f.read()
+
+        try:
+            decrypted_content = decrypt_data(encrypted_content)
+        except Exception as e:
+            return {"error": f"Decryption failed: {str(e)}"}
+
+        return StreamingResponse(iter([decrypted_content]), media_type="application/octet-stream")
+-test_peer_to_peer.py
+    from network.peer_client import send_store_request, send_fetch_request
+
+    # Store a chunk
+    response = send_store_request("localhost", 5001, b"this-is-a-remote-test")
+    print("📤 STORE Response:", response)
+
+    # Extract chunk_id
+    if response.startswith("STORED "):
+        chunk_id = response.split(" ")[1]
+        
+        # Fetch the chunk back
+        response = send_fetch_request("localhost", 5001, chunk_id)
+        print("📥 FETCH Response:", response[:60] + "...")
+    else:
+        print("❌ Store failed.")
+-test_sharding.py
+    from utils.shard_handler import process_file_to_shards, reconstruct_file_from_shards, distribute_shards_to_peers
+
+    input_file = "test.txt"
+    shard_folder = "shards"
+    output_file = "restored_example.txt"
+
+    manifest = process_file_to_shards(input_file, shard_folder)
+
+    # List of peer URLs (make sure at least one client_node server is running)
+    peers = [
+        "http://localhost:8000"  # You can spin up multiple FastAPI apps on diff ports
+    ]
+
+    # Send shards to peers
+    distribute_shards_to_peers(manifest, shard_folder, peers)
+
+    # Optional: reconstruct from local shards for testing
+    # reconstruct_file_from_shards(manifest, shard_folder, output_file)
