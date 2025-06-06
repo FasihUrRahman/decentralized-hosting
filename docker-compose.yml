@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  registry:
+    build: .
+    container_name: registry
+    command: python3 client_node/registry/registry_server.py
+    ports:
+      - "6000:6000"
+    volumes:
+      - ./client_node:/app/client_node
+
+  peer1:
+    build: .
+    container_name: peer1
+    environment:
+      - NODE_PORT=8000
+      - REGISTRY_HOST=registry
+    command: python3 client_node/shard_api.py
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./client_node:/app/client_node
+    depends_on:
+      - registry
+
+  peer2:
+    build: .
+    container_name: peer2
+    environment:
+      - NODE_PORT=8001
+      - REGISTRY_HOST=registry
+    command: python3 client_node/shard_api.py
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./client_node:/app/client_node
+    depends_on:
+      - registry
+
+  main_api:
+    build: .
+    container_name: main_api
+    environment:
+      - REGISTRY_HOST=registry
+    command: uvicorn client_node.main_api:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./client_node:/app/client_node
+    depends_on:
+      - registry
+      - peer1
+      - peer2
