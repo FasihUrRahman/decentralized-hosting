@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse # <-- Add JSONResponse
 import shutil
 import os
 import json
@@ -46,6 +46,7 @@ def task_delete_shards_from_peers(shards_to_delete: dict, api_key: str):
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
+    # ... (This function remains the same as before) ...
     temp_upload_shard_dir = os.path.join(TEMP_UPLOAD_DIR, file.filename + "_shards")
     os.makedirs(temp_upload_shard_dir, exist_ok=True)
     temp_file_path = os.path.join(TEMP_UPLOAD_DIR, file.filename)
@@ -62,7 +63,6 @@ async def upload_file(file: UploadFile = File(...)):
         peer_urls = [f"http://{p}" for p in peers]
         if not peer_urls:
             raise HTTPException(status_code=503, detail="No active peers available in the network.")
-        print(f"Found {len(peer_urls)} active peer(s): {peer_urls}")
         manifest_path = shard_handler.process_file_to_shards(temp_file_path, temp_upload_shard_dir)
         shard_map_path = shard_handler.distribute_shards_to_peers(
             manifest_path=manifest_path,
@@ -93,6 +93,7 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.get("/download/{file_id}")
 async def download_file(file_id: str, background_tasks: BackgroundTasks):
+    # ... (This function remains the same as before) ...
     manifest_path = os.path.join(METADATA_DIR, f"{file_id}.manifest.json")
     shard_map_path = os.path.join(METADATA_DIR, f"{file_id}.shard_map.json")
     if not os.path.exists(manifest_path) or not os.path.exists(shard_map_path):
@@ -115,6 +116,7 @@ async def download_file(file_id: str, background_tasks: BackgroundTasks):
 
 @app.delete("/delete/{file_id}")
 def delete_file(file_id: str, background_tasks: BackgroundTasks):
+    # ... (This function remains the same as before) ...
     manifest_path = os.path.join(METADATA_DIR, f"{file_id}.manifest.json")
     shard_map_path = os.path.join(METADATA_DIR, f"{file_id}.shard_map.json")
     if not os.path.exists(manifest_path) or not os.path.exists(shard_map_path):
@@ -137,3 +139,20 @@ def delete_file(file_id: str, background_tasks: BackgroundTasks):
     os.remove(manifest_path)
     os.remove(shard_map_path)
     return {"status": "success", "detail": f"Deletion process for file ID {file_id} initiated."}
+
+# --- NEW LEDGER ENDPOINT ---
+@app.get("/network/ledger", response_class=JSONResponse)
+def get_ledger():
+    """
+    Reads and returns the current state of the peer ledger.
+    """
+    ledger_path = os.path.join(METADATA_DIR, "ledger.json")
+    if not os.path.exists(ledger_path):
+        return {} # Return an empty object if no ledger exists yet
+    
+    with open(ledger_path, 'r') as f:
+        try:
+            ledger_data = json.load(f)
+            return ledger_data
+        except json.JSONDecodeError:
+            return {"error": "Ledger file is corrupt or empty."}

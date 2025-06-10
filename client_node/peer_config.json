@@ -1,0 +1,6 @@
+{
+    "storage_gb": 10,
+    "node_port": 8090,
+    "registry_host": "registry",
+    "peer_hostname": "peer1"
+}

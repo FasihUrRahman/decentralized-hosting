@@ -13,16 +13,19 @@
         button { padding: 0.8em; font-size: 1em; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #6c757d; cursor: not-allowed; }
-        .status, .file-list { margin-top: 1.5em; padding: 1em; border-radius: 4px; background-color: #e9ecef; }
+        .status, .file-list, .leaderboard { margin-top: 1.5em; padding: 1em; border-radius: 4px; background-color: #e9ecef; }
         h2 { margin-top: 0; border-bottom: 2px solid #ced4da; padding-bottom: 0.5em;}
         pre { white-space: pre-wrap; word-wrap: break-word; background: #343a40; color: #f8f9fa; padding: 1em; border-radius: 4px; }
         ul { list-style-type: none; padding: 0; }
         li { background: #f8f9fa; margin-bottom: 0.5em; padding: 0.75em; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
         li a { text-decoration: none; color: #007bff; font-weight: 500; }
         li a:hover { text-decoration: underline; }
-        /* NEW: Styles for the delete button */
         .delete-btn { background-color: #dc3545; padding: 0.4em 0.8em; font-size: 0.9em; }
         .delete-btn:hover { background-color: #c82333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+        th, td { text-align: left; padding: 0.75em; border-bottom: 1px solid #dee2e6; }
+        th { background-color: #007bff; color: white; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
     </style>
 </head>
 <body>
@@ -44,6 +47,21 @@
             <h2>Uploaded Files</h2>
             <ul id="fileList"></ul>
         </div>
+
+        <div class="leaderboard">
+            <h2>Peer Leaderboard</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Peer ID</th>
+                        <th>Successful Audits</th>
+                        <th>Failed Audits</th>
+                        <th>Tokens Earned</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardBody"></tbody>
+            </table>
+        </div>
     </div>
 
     <script>
@@ -54,11 +72,9 @@
         const statusTitle = document.getElementById('statusTitle');
         const statusBody = document.getElementById('statusBody');
         const fileList = document.getElementById('fileList');
+        const leaderboardBody = document.getElementById('leaderboardBody');
         const apiUrl = 'http://localhost:8080';
 
-        /**
-         * Renders the list of files, now with a delete button for each.
-         */
         const renderFileList = () => {
             const storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
             fileList.innerHTML = '';
@@ -68,35 +84,75 @@
             }
             storedFiles.forEach(fileData => {
                 const li = document.createElement('li');
-                
                 const a = document.createElement('a');
                 a.href = `${apiUrl}/download/${fileData.file_id}`;
                 a.textContent = fileData.original_filename;
                 a.target = '_blank';
-                
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = 'Delete';
                 deleteBtn.className = 'delete-btn';
                 deleteBtn.onclick = () => handleDelete(fileData.file_id, fileData.original_filename);
-
                 li.appendChild(a);
                 li.appendChild(deleteBtn);
                 fileList.appendChild(li);
             });
         };
 
+        /**
+         * Fetches ledger data and renders the leaderboard, now with rewards.
+         */
+        const fetchAndRenderLedger = async () => {
+            try {
+                const response = await fetch(`${apiUrl}/network/ledger`);
+                const ledger = await response.json();
+                leaderboardBody.innerHTML = '';
+
+                const peers = Object.keys(ledger);
+                if (peers.length === 0) {
+                    leaderboardBody.innerHTML = '<tr><td colspan="4">No peer data available yet. Waiting for audits...</td></tr>';
+                    return;
+                }
+
+                for (const peerId in ledger) {
+                    const data = ledger[peerId];
+                    const successes = data.successful_audits || 0;
+                    const failures = data.failed_audits || 0;
+                    const tokensIssued = data.tokens_issued || 0;
+
+                    // --- NEW: More robust reward calculation ---
+                    const score = (successes * 10) - (failures * 25);
+                    let totalTokensEligible = 0;
+                    if (score > 0) {
+                        totalTokensEligible = Math.floor(score / 100);
+                    }
+                    
+                    // The tokens shown are the total they are eligible for
+                    const tokensToShow = totalTokensEligible;
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${peerId}</td>
+                        <td>${successes}</td>
+                        <td>${failures}</td>
+                        <td>${tokensToShow} 🪙</td>
+                    `;
+                    leaderboardBody.appendChild(row);
+                }
+            } catch (error) {
+                leaderboardBody.innerHTML = '<tr><td colspan="4">Error loading leaderboard data.</td></tr>';
+                console.error("Error fetching ledger:", error);
+            }
+        };
+
         const addFileToList = (fileData) => {
             const storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
             if (!storedFiles.some(f => f.file_id === fileData.file_id)) {
                 storedFiles.push(fileData);
-                localStorage.setItem('uploadedFiles', JSON.stringify(storedFiles));
             }
+            localStorage.setItem('uploadedFiles', JSON.stringify(storedFiles));
             renderFileList();
         };
 
-        /**
-         * NEW: Removes a file's metadata from localStorage after deletion.
-         */
         const removeFileFromList = (fileId) => {
             let storedFiles = JSON.parse(localStorage.getItem('uploadedFiles') || '[]');
             storedFiles = storedFiles.filter(f => f.file_id !== fileId);
@@ -104,28 +160,18 @@
             renderFileList();
         };
 
-        /**
-         * NEW: Handles the click of a delete button.
-         */
         const handleDelete = async (fileId, filename) => {
-            if (!confirm(`Are you sure you want to permanently delete '${filename}' from the network?`)) {
-                return;
-            }
-
+            if (!confirm(`Are you sure you want to permanently delete '${filename}'?`)) return;
             statusDiv.style.display = 'block';
             statusTitle.textContent = 'Deleting...';
             statusBody.textContent = `Requesting deletion of ${filename}...`;
-
             try {
                 const response = await fetch(`${apiUrl}/delete/${fileId}`, { method: 'DELETE' });
                 const result = await response.json();
-
                 if (!response.ok) { throw new Error(result.detail || 'Server error'); }
-
                 statusTitle.textContent = '✅ Deletion Initiated';
                 statusBody.textContent = JSON.stringify(result, null, 2);
-                removeFileFromList(fileId); // Remove from UI on success
-
+                removeFileFromList(fileId);
             } catch (error) {
                 statusTitle.textContent = '❌ Deletion Failed';
                 statusBody.textContent = `An error occurred: ${error.message}`;
@@ -138,13 +184,11 @@
             const file = fileInput.files[0];
             const formData = new FormData();
             formData.append('file', file);
-            
             uploadButton.disabled = true;
             uploadButton.textContent = 'Uploading...';
             statusDiv.style.display = 'block';
             statusTitle.textContent = 'Uploading...';
             statusBody.textContent = `Sending ${file.name}...`;
-
             try {
                 const response = await fetch(`${apiUrl}/upload/`, { method: 'POST', body: formData });
                 const result = await response.json();
@@ -163,7 +207,11 @@
         };
 
         uploadForm.addEventListener('submit', handleUpload);
-        document.addEventListener('DOMContentLoaded', renderFileList);
+        document.addEventListener('DOMContentLoaded', () => {
+            renderFileList();
+            fetchAndRenderLedger();
+            setInterval(fetchAndRenderLedger, 5000);
+        });
     </script>
 </body>
 </html>

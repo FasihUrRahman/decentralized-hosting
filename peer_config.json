@@ -1,0 +1,7 @@
+{
+    "storage_gb": 10,
+    "node_port": 8003,
+    "registry_host": "localhost",
+    "registry_port": 6000,
+    "peer_hostname": "peer3"
+}
