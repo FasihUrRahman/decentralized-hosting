@@ -25,3 +25,10 @@ class User(BaseModel):
 
     class Config:
         from_attributes = True # Pydantic v2 replaces orm_mode
+
+class Token(BaseModel):
+    """
+    Schema for the token response after a successful login.
+    """
+    access_token: str
+    token_type: str

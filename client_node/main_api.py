@@ -1,6 +1,6 @@
 # client_node/main_api.py
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
@@ -15,6 +15,8 @@ from .network import peer_client
 from .config import Config
 from .database import database as db_logic
 from .auth.router import router as auth_router
+from .auth.security import get_current_user
+from .database.models import User
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,8 +49,7 @@ os.makedirs(TEMP_RECONSTRUCT_DIR, exist_ok=True)
 REGISTRY_HOST = config.REGISTRY_HOST
 REGISTRY_PORT = config.REGISTRY_PORT
 
-# ... (The rest of your endpoints: /upload, /download, /delete, /network/ledger remain exactly the same) ...
-
+# --- Helper function for background deletion ---
 def task_delete_shards_from_peers(shards_to_delete: dict, api_key: str):
     headers = {"X-API-KEY": api_key}
     for shard_name, peer_urls in shards_to_delete.items():
@@ -59,8 +60,14 @@ def task_delete_shards_from_peers(shards_to_delete: dict, api_key: str):
             except Exception as e:
                 print(f"Failed to request deletion of {shard_name} from {peer_url}: {e}")
 
+# --- MODIFIED: Endpoints now require authentication ---
+
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    # ... (function logic remains the same)
     temp_upload_shard_dir = os.path.join(TEMP_UPLOAD_DIR, file.filename + "_shards")
     os.makedirs(temp_upload_shard_dir, exist_ok=True)
     temp_file_path = os.path.join(TEMP_UPLOAD_DIR, file.filename)
@@ -77,7 +84,6 @@ async def upload_file(file: UploadFile = File(...)):
         peer_urls = [f"http://{p}" for p in peers]
         if not peer_urls:
             raise HTTPException(status_code=503, detail="No active peers available in the network.")
-        print(f"Found {len(peer_urls)} active peer(s): {peer_urls}")
         manifest_path = shard_handler.process_file_to_shards(temp_file_path, temp_upload_shard_dir)
         shard_map_path = shard_handler.distribute_shards_to_peers(
             manifest_path=manifest_path,
@@ -107,7 +113,12 @@ async def upload_file(file: UploadFile = File(...)):
             shutil.rmtree(temp_upload_shard_dir)
 
 @app.get("/download/{file_id}")
-async def download_file(file_id: str, background_tasks: BackgroundTasks):
+async def download_file(
+    file_id: str, 
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    # ... (function logic remains the same)
     manifest_path = os.path.join(METADATA_DIR, f"{file_id}.manifest.json")
     shard_map_path = os.path.join(METADATA_DIR, f"{file_id}.shard_map.json")
     if not os.path.exists(manifest_path) or not os.path.exists(shard_map_path):
@@ -129,7 +140,12 @@ async def download_file(file_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=f"Could not reconstruct file: {str(e)}")
 
 @app.delete("/delete/{file_id}")
-def delete_file(file_id: str, background_tasks: BackgroundTasks):
+def delete_file(
+    file_id: str, 
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    # ... (function logic remains the same)
     manifest_path = os.path.join(METADATA_DIR, f"{file_id}.manifest.json")
     shard_map_path = os.path.join(METADATA_DIR, f"{file_id}.shard_map.json")
     if not os.path.exists(manifest_path) or not os.path.exists(shard_map_path):
@@ -153,6 +169,7 @@ def delete_file(file_id: str, background_tasks: BackgroundTasks):
     os.remove(shard_map_path)
     return {"status": "success", "detail": f"Deletion process for file ID {file_id} initiated."}
 
+# The /network/ledger endpoint does not need to be protected
 @app.get("/network/ledger", response_class=JSONResponse)
 def get_ledger():
     ledger_path = os.path.join(METADATA_DIR, "ledger.json")
